@@ -6,7 +6,7 @@ from reportlab.lib import colors
 from io import BytesIO
 import os
 
-def generate_polished_pdf_report(audit_data, output_path, logo_path=None, contact_email="carmine@internetangels.com.au"):
+def generate_pdf_report(audit_data, output_path, logo_path=None, contact_email="carmine@internetangels.com.au"):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=18)
     styles = getSampleStyleSheet()
