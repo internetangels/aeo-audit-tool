@@ -16,7 +16,7 @@ def generate_pdf_report(url, results):
     from reportlab.lib import colors
     import os
 
-    path = f"/mnt/data/aeo-audit-{url.split('//')[-1].split('.')[0]}.pdf"
+    path = f"aeo-audit-{url.split('//')[-1].split('.')[0]}.pdf"
     doc = SimpleDocTemplate(path, pagesize=A4)
     styles = getSampleStyleSheet()
     elements = [Paragraph("AI SEO Compliance Report", styles["Title"])]
