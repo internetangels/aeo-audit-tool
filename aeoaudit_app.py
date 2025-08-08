@@ -1,6 +1,26 @@
 
 import streamlit as st
 from aeo_logic import run_audit, generate_pdf_report
+pdf_path = generate_pdf_report(
+    audit_data=audit_results,
+    output_path=output_path,
+    logo_path=logo_path,
+    contact_email=contact_email,
+    site_url=url
+)
+
+# ✅ Do the size check in the app, not in aeo_logic.py
+if os.path.exists(pdf_path) and os.path.getsize(pdf_path) > 2048:
+    with open(pdf_path, "rb") as f:
+        st.download_button(
+            label="📄 Download Action Plan PDF",
+            data=f,
+            file_name=os.path.basename(pdf_path),
+            mime="application/pdf",
+        )
+else:
+    st.error("PDF looks empty. Try again or check logs.")
+
 import os, tempfile, traceback
 
 def run_app():
