@@ -87,10 +87,18 @@ def _has_faq(soup: BeautifulSoup) -> bool:
     q_count = len(re.findall(r"\b(q:|question)\b", text)) + len(soup.select("details summary")) + len(soup.select("[itemtype*='FAQPage']"))
     return q_count >= 2
 
-def _testimonial_score(soup: BeautifulSoup) -> int:
+def _testimonial_score(soup):
+    # Count common testimonial signals + quoted snippets (ASCII-safe)
     text = soup.get_text(" ").lower()
-    hits = len(re.findall(r"testimonial|what our customers|5 star|★★★★★|“|”|"[^\"]+"", text))
+    hits = 0
+    hits += len(re.findall(r"\b(testimonial|what our customers|reviews?)\b", text))
+    hits += len(re.findall(r"5\s*-?\s*star", text))
+    # Optional: count star runs (5 or more solid stars) using the ASCII-safe char directly
+    hits += len(re.findall(r"★★★★★", text))
+    # Count any reasonably long quoted sentence using straight quotes
+    hits += len(re.findall(r"\"[^\"]{10,}\"", text))
     return hits
+
 
 def _has_comparison_table(soup: BeautifulSoup) -> bool:
     if soup.find("table"):
