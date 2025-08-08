@@ -1,2 +1,1 @@
-# aeo-audit-tool
-AEO audit tool
+Minimal safe build. Replace with full version once stable.
