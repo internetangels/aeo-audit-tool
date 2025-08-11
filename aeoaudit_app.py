@@ -8,13 +8,13 @@ def _score_counts(audit_results):
     ambers = sum(1 for v in audit_results.values() if v[0] == "🟡")
     reds   = sum(1 for v in audit_results.values() if v[0] == "🔴")
     total  = max(1, len(audit_results))
-    # Overall %: Green=2, Amber=1, Red=0
     score_map = {"🟢": 2, "🟡": 1, "🔴": 0}
     got = sum(score_map.get(v[0], 0) for v in audit_results.values())
     pct = int(round((got / float(2 * total)) * 100))
     return greens, ambers, reds, pct
 
 def _to_csv_bytes(audit_results):
+    import io, csv
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["Audit Area", "Score", "Result", "Recommendation", "Why it matters", "What to do", "Quick win"])
@@ -26,16 +26,26 @@ def _to_csv_bytes(audit_results):
 def run_app():
     st.set_page_config(page_title="AEO Audit Tool", layout="centered")
     st.title("🔍 AI SEO (AEO) Audit Tool — Pro (Lite+)")
-    st.caption("Now with a traffic-light dashboard and CSV export. If anything misbehaves, we can roll back without drama.")
+    st.caption("Traffic-light dashboard, CSV export, and sales-ready PDF with ROI.")
 
     url = st.text_input("Enter your website URL", placeholder="https://example.com")
-    c1, c2 = st.columns(2)
-    with c1:
+    ctop1, ctop2 = st.columns(2)
+    with ctop1:
         include_logo = st.checkbox("Include logo (reviewmatebanner.png)", value=os.path.exists("reviewmatebanner.png"))
-    with c2:
+    with ctop2:
         contact_email = st.text_input("Contact email in PDF", value="carmine@internetangels.com.au")
 
     local_mode = st.checkbox("Optimise for Local AU Business", value=True)
+
+    # 💰 Sales inputs
+    st.markdown("### ROI Inputs")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        avg_sale_value = st.number_input("Average sale value ($)", min_value=0, value=500, step=50)
+    with c2:
+        baseline_conv = st.number_input("Baseline conversion rate (%)", min_value=0, max_value=100, value=3, step=1)
+    with c3:
+        monthly_visitors = st.number_input("Monthly qualified visitors", min_value=0, value=300, step=50)
 
     if st.button("🚀 Run Audit", type="primary"):
         if not url:
@@ -45,21 +55,15 @@ def run_app():
             with st.spinner("Fetching key pages and analysing…"):
                 audit_results = run_audit(url, local_mode=local_mode)
 
-            # --- Traffic-light dashboard ---
             g, a, r, pct = _score_counts(audit_results)
             st.success("Audit complete.")
             st.subheader("Scorecard")
 
             mc1, mc2, mc3, mc4 = st.columns([1,1,1,2])
-            with mc1:
-                st.metric("🟢 Green", g)
-            with mc2:
-                st.metric("🟡 Amber", a)
-            with mc3:
-                st.metric("🔴 Red", r)
-            with mc4:
-                st.metric("Overall AEO Readiness", f"{pct}%")
-
+            with mc1: st.metric("🟢 Green", g)
+            with mc2: st.metric("🟡 Amber", a)
+            with mc3: st.metric("🔴 Red", r)
+            with mc4: st.metric("Overall AEO Readiness", f"{pct}%")
             st.progress(min(100, pct) / 100.0)
 
             # Highlights
@@ -76,11 +80,10 @@ def run_app():
                     st.markdown(f"**Recommendation:** {rec}")
                     st.markdown(f"**Why it matters:** {why}")
                     st.markdown(f"**What to do:** {how}")
-                    if qwin:
-                        st.markdown(f"**Quick win:** {qwin}")
+                    if qwin: st.markdown(f"**Quick win:** {qwin}")
                     st.markdown("---")
 
-            # --- Exports: PDF + CSV ---
+            # Exports
             filename_safe = url.replace("https://", "").replace("http://", "").replace("/", "_")
             output_path = os.path.join(tempfile.gettempdir(), f"AEO_Audit_{filename_safe}.pdf")
             logo_path = "reviewmatebanner.png" if include_logo and os.path.exists("reviewmatebanner.png") else None
@@ -90,7 +93,10 @@ def run_app():
                 output_path=output_path,
                 logo_path=logo_path,
                 contact_email=contact_email,
-                site_url=url
+                site_url=url,
+                avg_sale_value=avg_sale_value,
+                baseline_conv_pct=baseline_conv,
+                monthly_visitors=monthly_visitors
             )
 
             exp1, exp2 = st.columns(2)
