@@ -251,16 +251,26 @@ def run_audit(url, local_mode=True):
 # -------------------------------
 # PDF Builder (exec summary + action plan)
 # -------------------------------
-def generate_pdf_report(audit_data, output_path, logo_path=None, contact_email="carmine@internetangels.com.au", site_url=""):
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer, Image, PageBreak, ListFlowable, ListItem
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib import colors
+from datetime import datetime
+import os, math
+
+def generate_pdf_report(audit_data, output_path, logo_path=None, contact_email="carmine@internetangels.com.au",
+                        site_url="", avg_sale_value=500, baseline_conv_pct=3, monthly_visitors=300):
     styles = getSampleStyleSheet()
     title = ParagraphStyle(name="Title", fontSize=20, spaceAfter=14, alignment=1, textColor=colors.HexColor("#1A73E8"))
     h2 = ParagraphStyle(name="H2", fontSize=14, spaceAfter=8, textColor=colors.HexColor("#0B5BD3"))
     h3 = ParagraphStyle(name="H3", fontSize=12, spaceAfter=6, textColor=colors.black)
     small = ParagraphStyle(name="Small", fontSize=9, leading=12)
     cell = ParagraphStyle(name="Cell", fontSize=9, leading=11)
+    blt = ParagraphStyle(name="Bullet", fontSize=9, leading=12)
 
     elements = []
 
+    # Header / Logo
     if logo_path and os.path.exists(logo_path):
         try:
             elements.append(Image(logo_path, width=380, height=56))
@@ -268,12 +278,49 @@ def generate_pdf_report(audit_data, output_path, logo_path=None, contact_email="
         except Exception:
             pass
 
+    # Title
     elements.append(Paragraph("AI Search (AEO) Audit and Action Plan", title))
     meta = "Website: %s  •  Date: %s" % (site_url or "N/A", datetime.today().strftime("%d %b %Y"))
     elements.append(Paragraph(meta, small))
     elements.append(Spacer(1, 6))
 
-    # Exec summary bullets
+    # ---------- Page: Why AEO Beats SEO ----------
+    elements.append(Paragraph("Why AI Search Matters (vs Traditional SEO)", h2))
+    elements.append(Paragraph(
+        "Traditional SEO shows 10 blue links and ads. Customers must compare and choose. "
+        "AI search (ChatGPT, Perplexity, Gemini, Google AI Overviews) returns a single answer "
+        "or a very short shortlist. If your brand is not in that answer, you are effectively invisible.",
+        small
+    ))
+    rows_cmp = [
+        ["Channel", "How Results Appear", "User Behaviour", "Implication"],
+        ["Google SEO", "Multiple links + ads + map pack", "Scroll & compare multiple sites",
+         "You compete for clicks; low certainty"],
+        ["AI Search (AEO)", "One answer / shortlist with explanation", "Trusts summarised answer; 1–2 clicks",
+         "Winner-takes-most attention"],
+    ]
+    tbl_cmp = Table(rows_cmp, colWidths=[80, 170, 140, 140])
+    tbl_cmp.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#0B5BD3")),
+        ("TEXTCOLOR", (0,0), (-1,0), colors.whitesmoke),
+        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
+        ("GRID", (0,0), (-1,-1), 0.25, colors.grey),
+        ("VALIGN", (0,0), (-1,-1), "TOP"),
+        ("BACKGROUND", (0,1), (-1,-1), colors.whitesmoke),
+    ]))
+    elements.append(tbl_cmp)
+    elements.append(Spacer(1, 8))
+
+    # Exec Summary (simple)
+    SCORE_MAP = {"🟢": 2, "🟡": 1, "🔴": 0}
+    total = sum(SCORE_MAP.get(t[0], 0) for t in audit_data.values())
+    max_total = 2 * len(audit_data) if audit_data else 1
+    score_pct = int(round((total / float(max_total)) * 100))
+    elements.append(Paragraph("Executive Summary", h2))
+    elements.append(Paragraph("Overall AEO Readiness Score: <b>%d%%</b>" % score_pct, small))
+    elements.append(Spacer(1, 4))
+
+    # Strengths / Weaknesses / Quick wins (top few)
     strengths, weaknesses, qw = [], [], []
     for k, (icon, result, rec, why, how, qwin) in audit_data.items():
         if icon == "🟢":
@@ -281,31 +328,83 @@ def generate_pdf_report(audit_data, output_path, logo_path=None, contact_email="
         else:
             weaknesses.append("%s: %s — %s" % (k, result, rec))
             if qwin: qw.append(qwin)
-    # De-dup quick wins
+    # de-dup qw
     seen, qw_unique = set(), []
     for q in qw:
         if q not in seen:
             qw_unique.append(q); seen.add(q)
 
-    bl = ParagraphStyle(name="Bullet", fontSize=9, leading=12)
     if strengths:
         elements.append(Paragraph("Strengths", h3))
-        elements.append(ListFlowable([ListItem(Paragraph(s, bl)) for s in strengths[:6]], bulletType="bullet", leftIndent=10))
+        elements.append(ListFlowable([ListItem(Paragraph(s, blt)) for s in strengths[:6]], bulletType="bullet", leftIndent=10))
         elements.append(Spacer(1, 4))
     if weaknesses:
         elements.append(Paragraph("Weaknesses", h3))
-        elements.append(ListFlowable([ListItem(Paragraph(w, bl)) for w in weaknesses[:6]], bulletType="bullet", leftIndent=10))
+        elements.append(ListFlowable([ListItem(Paragraph(w, blt)) for w in weaknesses[:6]], bulletType="bullet", leftIndent=10))
         elements.append(Spacer(1, 4))
     if qw_unique:
         elements.append(Paragraph("Quick Wins (next 7 days)", h3))
-        elements.append(ListFlowable([ListItem(Paragraph(q, bl)) for q in qw_unique[:6]], bulletType="bullet", leftIndent=10))
+        elements.append(ListFlowable([ListItem(Paragraph(q, blt)) for q in qw_unique[:6]], bulletType="bullet", leftIndent=10))
         elements.append(Spacer(1, 6))
 
-    # Summary table
+    # ---------- ROI Projection ----------
+    # Assumptions (conservative; tune as needed)
+    # Impact multipliers when fixed (relative uplift to AI visibility / conversions)
+    IMPACT = {
+        "Service-in-City Pages":        ("High", 0.40),
+        "Testimonials & Case Studies":  ("Medium", 0.25),
+        "FAQ Depth":                    ("Medium", 0.20),
+        "Comparison Table":             ("Medium", 0.20),
+        "AI Tone of Voice":             ("Medium", 0.15),
+        "Home Page Readability":        ("Medium", 0.15),
+        "Pricing Transparency":         ("Low",   0.10),
+        "Local & Directory Profiles":   ("Low",   0.10),
+        "Reviews Quantity & Rating":    ("Low",   0.10),
+        "Press / Best Of Mentions":     ("Low",   0.10),
+        "Technical Markup (Schema)":    ("Low",   0.10),
+        "Mobile UX & Speed":            ("Low",   0.10),
+    }
+
+    # Baseline conversions per month
+    base_conv_rate = max(0.0, float(baseline_conv_pct) / 100.0)
+    base_conversions = monthly_visitors * base_conv_rate
+    elements.append(Paragraph("Projected ROI (Conservative Model)", h2))
+    elements.append(Paragraph(
+        "Inputs: Avg sale value = $%s, Baseline conversion = %s%%, Monthly visitors = %s. "
+        "Uplift is estimated per fix and applied to the current baseline to illustrate order-of-magnitude gains."
+        % (int(avg_sale_value), int(baseline_conv_pct), int(monthly_visitors)),
+        small
+    ))
+    elements.append(Spacer(1, 4))
+
+    roi_rows = [["Fix", "Priority", "Impact (est.)", "Added conv./month", "Projected $/month"]]
+    for area, (icon, _res, rec, _why, _how, _qwin) in audit_data.items():
+        pri, imp = IMPACT.get(area, ("Low", 0.05))
+        # Only count issues that are not already Green
+        if icon != "🟢":
+            added_conversions = base_conversions * imp
+            projected_dollars = added_conversions * max(0, avg_sale_value)
+            roi_rows.append([area, pri, "%d%%" % int(imp * 100), "%.1f" % added_conversions, "$%s" % (int(projected_dollars))])
+
+    if len(roi_rows) == 1:
+        roi_rows.append(["All Good", "—", "—", "0.0", "$0"])
+
+    roi_tbl = Table(roi_rows, colWidths=[150, 70, 80, 90, 100])
+    roi_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#1A73E8")),
+        ("TEXTCOLOR", (0,0), (-1,0), colors.whitesmoke),
+        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
+        ("GRID", (0,0), (-1,-1), 0.25, colors.grey),
+        ("VALIGN", (0,0), (-1,-1), "TOP"),
+        ("BACKGROUND", (0,1), (-1,-1), colors.whitesmoke),
+    ]))
+    elements.append(roi_tbl)
+    elements.append(Spacer(1, 8))
+
+    # ---------- Summary table of findings ----------
     rows = [["Audit Area", "Score", "Result", "Recommendation"]]
     for area, (icon, result, rec, _why, _how, _qwin) in audit_data.items():
         rows.append([Paragraph(area, cell), Paragraph(icon, cell), Paragraph(result, cell), Paragraph(rec, cell)])
-
     table = Table(rows, colWidths=[120, 40, 160, 160])
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1A73E8")),
@@ -323,7 +422,7 @@ def generate_pdf_report(audit_data, output_path, logo_path=None, contact_email="
 
     elements.append(PageBreak())
 
-    # Action plan
+    # ---------- Action Plan ----------
     elements.append(Paragraph("Detailed Action Plan", h2))
     for area, (icon, result, rec, why, how, qwin) in audit_data.items():
         elements.append(Paragraph("%s %s" % (icon, area), h3))
@@ -334,7 +433,22 @@ def generate_pdf_report(audit_data, output_path, logo_path=None, contact_email="
             elements.append(Paragraph("<b>Quick win:</b> %s" % qwin, small))
         elements.append(Spacer(1, 6))
 
-    # Build directly to disk (no empty buffer)
+    elements.append(PageBreak())
+
+    # ---------- CTA ----------
+    elements.append(Paragraph("Next Steps", h2))
+    elements.append(Paragraph(
+        "AI search is already shaping buying decisions. Brands optimised for AEO get chosen as the answer. "
+        "We can implement the fixes above — content, schema, reviews, and local coverage — then re-audit for uplift.",
+        small
+    ))
+    elements.append(Spacer(1, 4))
+    elements.append(Paragraph("📧 Contact: <a href='mailto:%s'>%s</a>" % (contact_email, contact_email), small))
+    elements.append(Spacer(1, 6))
+    elements.append(Paragraph("Generated by ReviewMate AEO Audit Tool", ParagraphStyle(name='Footer', fontSize=9, alignment=1, textColor=colors.grey)))
+
+    # Build to disk
     doc = SimpleDocTemplate(output_path, pagesize=A4, rightMargin=28, leftMargin=28, topMargin=28, bottomMargin=24)
     doc.build(elements)
     return output_path
+
