@@ -288,7 +288,8 @@ def _brand_from_url(site_url: str) -> str:
         return "Your Business"
 
 def _wrap(flowable, maxw, maxh=1000):
-    return KeepInFrame(maxw=maxw, maxh=maxh, content=[flowable], mode="shrink")
+    return KeepInFrame(maxw, maxh, [flowable], mode="shrink")
+
 
 # ----------------------- PDF: generate_pdf_report -----------------------
 
